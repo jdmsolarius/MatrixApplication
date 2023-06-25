@@ -1,0 +1,19 @@
+{
+  "dependencies": {
+    "mssql1": {
+      "type": "mssql",
+      "connectionId": "ConnectionStrings:AzazelDb"
+    },
+    "mssql2": {
+      "type": "mssql",
+      "connectionId": "ConnectionString"
+    },
+    "secrets1": {
+      "type": "secrets"
+    },
+    "storage1": {
+      "type": "storage",
+      "connectionId": "AzureFileStorage"
+    }
+  }
+}

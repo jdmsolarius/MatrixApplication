@@ -1,0 +1,625 @@
+﻿@{
+    ViewData["Title"] = "Home Page";
+    Dictionary<string, int> samplesToId = new Dictionary<string, int>();
+    HashSet<string> firstSet = new HashSet<string>();
+    HashSet<string> alreadyTried = new HashSet<string>();
+}
+@using FastMember;
+<div class="col-md-12">
+    <b>Experiment Name:</b>
+<select id ="SelectExperiment">
+    @foreach(string item in ViewBag.totalOptions)
+    {
+        if (!alreadyTried.Contains(item))
+        {   
+            alreadyTried.Add(item);
+            <option value="@item">@item</option>
+        }
+    }
+</select>
+</div>
+<select id ="selectFile" style="visibility:hidden">
+
+    @foreach(Tuple<int, string, string> MatrixIdFileName in ViewBag.MatrixIdFileName)
+    {
+        var first = MatrixIdFileName.Item2.Replace("counts.matrix.", "").Split('.').First().Split("vs").First().TrimEnd('_').ToString();
+        var second = MatrixIdFileName.Item2.Replace("counts.matrix.", "").Split('.').First().Split("vs").Last().TrimStart('_').ToString();
+        samplesToId.Add(first+"|"+second, MatrixIdFileName.Item1);
+        samplesToId.Add(second+"|"+first, MatrixIdFileName.Item1);
+        <option value="@MatrixIdFileName.Item1">@MatrixIdFileName.Item2</option>
+    }
+</select>
+<div id="topDiv"></div>
+<div class="col-md-12" style="padding:0px">
+    SampleA   &nbsp;&nbsp;        vs.    &nbsp;&nbsp;    SampleB  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;  FoldChangeThreshold &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;   SignificanceThreshold     &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;  X axis Variable  &nbsp;&nbsp;10 Click &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp&nbsp;&nbsp Gene Search (comma seperated)  
+    <br />
+    <select id="SampleA">
+            @foreach(Tuple<int, string, string> item in ViewBag.MatrixIdFileName)
+            {
+                <option value="@item.Item2.Replace("counts.matrix.", "").Split('.')[0].Split("vs")[0].TrimEnd('_').ToString()">@item.Item2.Replace("counts.matrix.", "").Split('.')[0].Split("vs")[0].TrimEnd('_').ToString()</option>
+            }
+    </select>
+    <select id="SampleB">
+            @foreach(Tuple<int, string, string> item in ViewBag.MatrixIdFileName)
+            {
+                <option value="@item.Item2.Replace("counts.matrix.", "").Split('.')[0].Split("vs").Last().TrimStart('_').ToString()">@item.Item2.Replace("counts.matrix.", "").Split('.')[0].Split("vs").Last().TrimStart('_').ToString()</option>
+            }
+    </select>
+    <button id="grabPlot">Get Plot</button>
+    <input type="number" value="0.01" id="FoldChangeThreshold" name="foldChangeThreshold"/>
+    <input type="number" value="1.2" id="SignificanceThreshold" name="SignificanceThreshold"/>
+ 
+    <select style="visibility:visible" id="XAxisItem">@foreach(string item in (List<string>)ViewBag.XAxisVariables)
+        {
+            <option value = "@item">@item</option>
+        }
+    </select>
+    <input type="checkbox" id="click10" style="visibility: visible;width: 50px;height: 20px;margin-top: 2px;">
+    <button id ="Resetbutton">Reset</button>
+    <input type="text" title="GeneSearch" id="GeneSearch" placeholder=", delim Gene Search" style="width: 181px">
+     <button id ="GeneGo">Go</button>
+</div>
+
+<html lang="en">
+<head>
+<style>
+</style>
+  <meta charset="UTF-8">
+    <title>Zoomable Volcano Plot with Tooltips in D3 v4</title>
+    <link rel="stylesheet" href="css/site.css">
+    <script src="lib/jquery/dist/jquery.min.js">
+const { Button } = require("../../wwwroot/lib/bootstrap/dist/js/bootstrap");
+</script>
+    <script src="js/site.js"></script>
+    <script src="js/d3js.js"></script>
+    <style>
+table {
+  font-family: arial, sans-serif;
+  border-collapse: collapse;
+  width: 100%;
+}
+td, th {
+  border: 1px solid #dddddd;
+  text-align: left;
+  padding: 8px;
+
+}
+tr:nth-child(even) {
+  background-color: #dddddd;
+}
+
+</style>
+</head>
+<body>
+<div style="text-align:right" hidden >
+    Upload Counts
+    <input  id='file' type='file' ><br>
+
+    upload Initial Matrix
+    <input  id='file2' type='file' ><br>
+
+    upload Results Matrix
+    <input  id='file3' type='file' ><br>
+
+    upload CPPM Matrix
+    <input  id='file4' type='file' ><br>
+</div>
+
+
+
+<div class ="col-md-12 col-md-offset-6" style="text-align:right" hidden>
+<input type="button" id="btnUpload" value="Upload Files" />  
+
+</div>
+<div id="chart">
+
+</div>
+
+<script>   
+  
+</script>
+<div class="col-md-12" style="margin-top:15px">
+    <button id="downloadDownRegulated" style="visibility:hidden">Download down-regulated Genes</button>
+    <button id="downloadUpRegulated" style="visibility:hidden">Download up-regulated Genes</button>
+    <button id="downloadEntireDataset" style="visibility:hidden">Download Entire Dataset</button>
+    <button id="HideGreyDots" style="visibility:hidden">Toggle Grey Dots Off</button> <b id="performance" style="visibility:hidden">(Massively Improves performance)</b>
+    <br />
+    <br />
+    <b id="clickDots" style="visibility:hidden">If you want a custom dataset click on the dots!</b>
+
+<select id="DownloadableData" style="visibility:hidden">
+   <option value="default">Select an option</option>
+   <option value="customBox">customBox</option>
+</select>
+
+    <b id="optionText" style="visibility:hidden">&nbsp;&nbsp;&nbsp;&nbsp; x1 &nbsp;&nbsp;&nbsp;&nbsp; x2 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp y1 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp y2</b>&nbsp;&nbsp;&nbsp&nbsp;&nbsp;&nbsp;&nbsp;
+    <br />
+    <input type="number" id="x1" title="x1" name="x1" style="visibility:hidden;width:45px;margin-left:185px;" />
+    <input type="number" id="x2" title="x2" name="x2" style="visibility:hidden;width:45px"/>
+    <input type="number" id="y1" title="y1" name="y1" style="visibility:hidden;width:45px"/>
+    <input type="number" id="y2" title="y1" name="y2" style="visibility:hidden;width:45px"/>
+</div>
+
+<div class="padding-div" style="padding:10px;visibility:hidden"></div>
+<button id="deleteButton" style="visibility:hidden;box-sizing:border-box;top:5px;bottom:10px;margin-left:15px">Delete Selected Row</button>
+<button id="clearTable" style="visibility:hidden;box-sizing:border-box;top:5px;bottom:10px;margin-left:15px">Delete all Rows</button>
+<button id="DataSetDownload" style="visibility:hidden;margin-left:10px">Get selected Dataset</button> <b id="DownloadText" style="visibility:hidden">Datasets over 200 dots will be downloaded.</b>
+
+<div class="padding=div" style="padding:10px;visibility:hidden"></div>
+<table id ="GeneTable" style="top:10px">
+
+    
+
+</table>
+
+<img src="/lib/Loading_icon.gif" id="LoadingImage" /> 
+<pre id='output' style="visibility:hidden">...</pre>
+
+<pre id='output2' style="visibility:hidden">...</pre>
+
+<pre id='output3' style="visibility:hidden">...</pre>
+
+<pre id='output4' style="visibility:hidden">...</pre>
+
+<script>
+        $('#LoadingImage').hide();
+        const options = []
+
+        document.querySelectorAll('#SampleA > option').forEach((option) => {
+            if (options.includes(option.value)) option.remove()
+            else options.push(option.value)
+        })
+        const options2 = []
+
+        document.querySelectorAll('#SampleB > option').forEach((option) => {
+            if (options2.includes(option.value)) option.remove()
+            else if (options.includes(option.value)) $(option).hide();
+            else options2.push(option.value)
+        })
+
+        $('#SampleA').change(function () {
+            var vals = []
+            var value = this.value
+            $('#SampleB > option').each(function () {
+                if ($(this).text() == value) {
+                    $(this).hide();
+                } else {
+                    $(this).show();
+                }
+            })
+            document.querySelectorAll('#SampleB > option').forEach((option) => {
+                if ($(option).text() == value) {
+                    $(option).hide();
+                }
+                else {
+                    if (vals.includes($(option).text())) {
+                        $(option).hide();
+                    }
+                    else {
+                        $(option).show();
+                    }
+                }
+                vals.push($(option).text())
+            })
+        })
+        $('#SampleB').change(function () {
+            var vals = []
+            var value = this.value
+            document.querySelectorAll('#SampleA > option').forEach((option) => {
+
+                if ($(option).text() == value) {
+                    $(option).hide();
+                }
+                else {
+                    if (!vals.includes($(option).text())) {
+                        $(option).show();
+                    }
+                    else {
+                        vals.push($(option).text())
+                    }
+                }
+
+            })
+        })
+        var volcano = ""
+        $(document).ready(function () {
+            var purpleDots = [], SamplestoFiles = @Html.Raw(Json.Serialize(samplesToId)), significanceThreshold = 1.2, foldChangeThreshold = 0.01
+
+            var LoadingGraphic = "/lib/Loading_icon.gif", yLabel = '-log<tspan baseline-shift="sub">10</tspan>False Discovery Rate'
+            var xLabel = $('#SampleA').val() + '&nbsp;&nbsp;' + '&lt;' + '&nbsp;' + $('#SampleB').val() + '&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;' + $('#XAxisItem').val() + '&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;' + $('#SampleA').val() + '&nbsp;&nbsp;' + '&gt;' + '&nbsp;&nbsp;' + $('#SampleB').val(), xAxisItem = document.getElementById("XAxisItem").value
+            var tempIn = xLabel
+            document.getElementById('grabPlot').onclick = function () {
+                var SampleA = document.getElementById('SampleA').value, SampleB = document.getElementById('SampleB').value
+                var key = ""
+                var keyOne = SampleA + "|" + SampleB, keyTwo = SampleB + "|" + SampleA, dataSets = [], exclude = ["Id", "KVPRows", "MatrixId"], indexes = []
+                if (Object.keys(SamplestoFiles).includes(keyOne)) {
+                    key = SamplestoFiles[keyOne]
+                }
+                else {
+                    key = SamplestoFiles[keyTwo]
+                }
+                if (key == undefined || key == null || key == "") {
+                    alert("no data exists for this combination")
+                    location.reload();
+                }
+                var MatrixId = key
+                $.ajax({
+                    url: '/Home/GetVolcanoTSV?MatrixId=' + key + "&XAxisItem=" + xAxisItem + "&foldChangeThreshold=" + foldChangeThreshold + "&significanceThreshold=" + significanceThreshold,
+                    type: "GET",
+                    contentType: "application/x-www-form-urlencoded",
+                    async: true,
+                    beforeSend: function () {
+                        significanceThreshold = document.getElementById('SignificanceThreshold').value
+                        foldChangeThreshold = document.getElementById('FoldChangeThreshold').value
+                        $('#LoadingImage').show();
+                        $('#chart').hide();
+                        xLabel = $('#SampleA').val() + '&nbsp;&nbsp;' + '&lt;' + '&nbsp;' + $('#SampleB').val() + '&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;' + $('#XAxisItem').val() + '&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;' + $('#SampleA').val() + '&nbsp;&nbsp;' + '&gt;' + '&nbsp;&nbsp;' + $('#SampleB').val(), xAxisItem = document.getElementById("XAxisItem").value
+                    },
+                    success: function (dat) {
+                        $('#LoadingImage').hide();
+                        $('#chart').show();
+
+
+
+                        //$('#DownloadableData').css('visibility', 'visible');
+                        document.getElementById('chart').innerHTML = ""
+                        document.getElementById('GeneTable').innerHTML = ""
+                        data = JSON.parse(dat[0])
+                        $('#GeneGo').off('click')
+                        $('#Resetbutton').off('click')
+                        $('#downloadEntireDataset').off('click')
+                        $('#HideGreyDots').off('click')
+                        $('#downloadUpRegulated').off('click')
+                        $('#downloadEntireDataset').off('')
+                        $('#downloadUpRegulated').off('click')
+                        $('#downloadDownRegulated').off('click')
+                        $('#clearTable').off('click')
+                        $('#DownloadableData').off('click')
+
+                        var volcano = volcanoPlot(foldChangeThreshold, significanceThreshold)
+                            .xAxisLabel(xLabel)
+                            .yAxisLabel("-Log2(PValue)")
+                            .sampleID("G")
+                            .xColumn("L")
+                            .yColumn("P")
+                        d3.select('#chart')
+                            .data([data])
+                            .call(volcano);
+                        xLabel = $('#SampleA').val() + " < " + $('#SampleB').val() + '&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;' + $('#XAxisItem').val() + "&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;" + $('#SampleA').val() + " > " + $('#SampleB').val(), xAxisItem = document.getElementById("XAxisItem").value
+                        adjustLabel(xLabel)
+
+
+
+                        purpleDots = DataTableFromPlot(purpleDots, key, significanceThreshold, foldChangeThreshold, false)
+                        dataSets = getDatasets(foldChangeThreshold, significanceThreshold, data);
+
+                        var selText = null
+                        for (var i = 0; i < Object.keys(dataSets).length; i++) {
+                            if ($("#DownloadableData option[value='" + Object.values(dataSets)[i] + "']").length == 0) {
+                                $('#DownloadableData').append("<option value=" + Object.values(dataSets)[i] + ">" + Object.keys(dataSets)[i] + "</option>");
+                            }
+                        }
+                        
+
+                        purpleDots = clearTable('clearTable', purpleDots);
+                        optionDropdown();
+                        makeVisible()
+
+                        $('#downloadUpRegulated').click(function () {
+                            selText = "meetsSigFoldPositive"
+                            $('#DataSetDownload').click();
+                        })
+                        $('#downloadDownRegulated').click(function () {
+                            selText = "meetsSigFoldNegative"
+                            $('#DataSetDownload').click();
+                        })
+                        $('#Resetbutton').click(function () {
+                            var tooltips = document.getElementsByClassName('tooltip')
+                            var nums = $('#GeneSearch').val()
+                            if (nums == "" || nums == null) {
+                                $(document.getElementsByClassName('tooltip')).css('visibility', 'hidden')
+                                $('#GeneSearch').val("")
+                                return;
+                            }
+                            if (nums.toString().includes(",")) {
+                                nums = $('#GeneSearch').val().toString().split(",")
+                                for (var j = 0; j < tooltips.length; j++) {
+                                    for (var i = 0; i < nums.length; i++) {
+                                        if (tooltips[j].id.toUpperCase() == nums[i].trim().toUpperCase()) {
+                                            $(document.getElementById(tooltips[j].id)).css('visibility', 'hidden')
+                                        }
+                                    }
+                                }
+                            }
+                            else {
+                                for (var j = 0; j < tooltips.length; j++) {
+                                    if (tooltips[j].id.toUpperCase() == nums.trim().toUpperCase()) {
+                                        $(document.getElementById(tooltips[j].id)).css('visibility', 'hidden')
+                                    }
+                                }
+                            }
+                            $('#GeneSearch').val("")
+
+                        })
+                        $('#downloadEntireDataset').click(function () {
+                            selText = "allDots"
+                            var finalSet = downloadDataset(dataSets, JSON.parse(dat[1]), selText)
+                            var final = arrayToCsv(finalSet)
+                            downloadBlob(final, SampleA + "vs" + SampleB + "_" + selText + ".csv", 'text/csv;charset=utf-8;')
+                        })
+                        $('#HideGreyDots').click(function () {
+                            var dotText = $('#HideGreyDots').text();
+                            var dots = document.getElementsByClassName('dot')
+                            var greyDots = []
+                            $('#LoadingImage').show();
+                            $('#chart').hide();
+                            for (var i = 0; i < dots.length; i++) {
+                                if ($(dots[i]).hasClass("sig") || $(dots[i]).hasClass("sigfold") || $(dots[i]).hasClass("fold")) {
+                                    continue
+                                }
+                                else if (dotText == "Toggle Grey Dots Off") {
+                                    $(dots[i]).hide();
+                                }
+                                else {
+                                    $(dots[i]).show();
+                                }
+                            }
+                            if (dotText == "Toggle Grey Dots Off") {
+                                $('#HideGreyDots').text("Toggle Grey Dots On");
+                                $('#performance').text("Decreases Performance");
+
+                            }
+                            else {
+                                $('#performance').text("Massively Increases Performance");
+                                $('#HideGreyDots').text("Toggle Grey Dots Off");
+
+                            }
+                            $('#LoadingImage').hide();
+                            $('#chart').show();
+                        })
+                        var hasEntered = false
+                        $('#GeneGo').click(function (data, volcano, hasEntered) {
+                            
+                            data = JSON.parse(dat[0])
+                            //popTooltips(dataSets["allDots"], $('#GeneSearch').val())
+                            document.getElementById('chart').innerHTML = ""
+
+                            var volcano = volcanoPlot(foldChangeThreshold, significanceThreshold)
+                                .xAxisLabel(xLabel)
+                                .yAxisLabel("-Log(PValue)")
+                                .sampleID("G")
+                                .xColumn("L")
+                                .yColumn("P")
+                            d3.select('#chart')
+                                .data([data])
+                                .call(volcano);
+
+                            popTooltips(dataSets["allDots"], $('#GeneSearch').val())
+
+                            dataSets = getDatasets(foldChangeThreshold, significanceThreshold, data);
+                            xLabel = $('#SampleA').val() + " < " + $('#SampleB').val() + '&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;' + $('#XAxisItem').val() + "&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;" + $('#SampleA').val() + " > " + $('#SampleB').val(), xAxisItem = document.getElementById("XAxisItem").value
+
+                            document.getElementById('chart').innerHTML = ""
+                            var volcano = volcanoPlot(foldChangeThreshold, significanceThreshold)
+                                .xAxisLabel(xLabel)
+                                .yAxisLabel("-Log(PValue)")
+                                .sampleID("G")
+                                .xColumn("L")
+                                .yColumn("P")
+                            d3.select('#chart')
+                                .data([data])
+                                .call(volcano);
+
+
+                            dataSets = getDatasets(foldChangeThreshold, significanceThreshold, data);
+
+                            var selText = null
+
+                            for (var i = 0; i < Object.keys(dataSets).length; i++) {
+                                if ($("#DownloadableData option[value='" + Object.values(dataSets)[i] + "']").length == 0) {
+                                    $('#DownloadableData').append("<option value=" + Object.values(dataSets)[i] + ">" + Object.keys(dataSets)[i] + "</option>");
+                                }
+                            }
+
+                            optionDropdown();
+                            makeVisible()
+                            adjustLabel(xLabel)
+                            if(!document.getElementById('GeneTable').outerHTML.includes("dataTable"))
+                            {
+                                if(hasEntered = true)
+                                {
+                                    SyncDots(purpleDots)
+                                }
+                                purpleDots = DataTableFromPlot(purpleDots, key, significanceThreshold, foldChangeThreshold, false)
+                                hasEntered = true
+
+                            }
+                            else
+                            {
+                                if(hasEntered = true)
+                                {
+                                    SyncDots(purpleDots)
+                                }
+                                purpleDots = DataTableFromPlot(purpleDots, key, significanceThreshold, foldChangeThreshold, true)
+                                hasEntered = true
+                            }
+                      
+
+                        })
+
+                    },
+                    error: function (err) {
+                        $('#LoadingImage').hide();
+                        document.getElementById('chart').innerHTML = ""
+                        document.getElementById('GeneTable').innerHTML = ""
+                    }
+                });
+            }
+
+
+            fetchFiles();
+
+            //$('#SelectExperiment').change(function(){
+            //
+            //})
+
+
+   $('#btnUpload').click(function () {  
+        // Checking whether FormData is available in browser  
+        if (window.FormData !== undefined) {  
+            var CountsTxt = document.getElementById("output").textContent.split("\n")
+            var SearchableSet = document.getElementById("output2").textContent.split(/\s{2,}|\t/);
+            var SearchableSetTwo = document.getElementById("output3").textContent.split(/\s{2,}|\t/)
+            var SetToUpload = document.getElementById("output3").textContent.split("\n")
+            SetToUpload = "UniqueKey\t" + SetToUpload
+                    SetToUpload = SetToUpload.replace(/ /g, '\t').replace('\t\t\t', '\t\t').replace('\t\t', '\t');
+
+            var CPMMatrix = document.getElementById("output4").textContent.split(/\s{2,}|\t/)
+            
+            var experimentfirst = "nmnat2_"
+            let firstNumericIndex = CPMMatrix.findIndex(isNaN);
+            let CPMHeaders = CPMMatrix.slice(0, firstNumericIndex).map(header => header.replace(experimentfirst, ""));
+            let numDataPoints = (CPMMatrix.length - firstNumericIndex) / CPMHeaders.length;
+            let finalObject = CPMHeaders.reduce((obj, header, index) => {
+                obj[header] = CPMMatrix.slice(firstNumericIndex + index * numDataPoints, firstNumericIndex + (index + 1) * numDataPoints);
+                return obj;
+            }, {});
+            /* 
+       
+            $.ajax({
+                url: '/Home/UploadCPMMatrixResult',
+                type: "POST",
+                contentType: "application/x-www-form-urlencoded",
+                data: { MultiMap: JSON.stringify(finalObject), ExperimentName: $('#SelectExperiment').val() },
+                beforeSend: function () {
+                    $('#LoadingImage').show();
+                },
+                success: function (data) {  
+                   $('#LoadingImage').hide();
+                   alert("success")
+                },  
+                error: function (err) {  
+                    alert(err.statusText);  
+                }  
+            });
+
+                  */
+    
+            //split out the three aggregated columns tThey mess up the indexes so deal with them seperately
+            let newLineCarriageReturnOne = SearchableSet.includes("\r\n") ? "\r\n" : "\n";
+            let newLineCarriageReturnTwo = SearchableSetTwo.includes("\r\n") ? "\r\n" : "\n";
+
+
+            let SearchableKeysTwo = [];
+            let unSearchableKeysTwo = [];
+     
+            SearchableSetTwo.forEach((line, index) => {
+                if (line.includes(newLineCarriageReturnTwo)) {
+                    let searchableItem = line.split(newLineCarriageReturnTwo)[1];
+                    let searchableItemTwo = line.split(newLineCarriageReturnTwo)[0];
+                    unSearchableKeysTwo.push(searchableItemTwo);
+                    if (index > 0) {
+                        SearchableKeysTwo.push(searchableItem);
+                    }
+                } else {
+                    let searchableItem = line;
+                    unSearchableKeysTwo.push(searchableItem);
+                }
+            });
+            let KeyConsolidation = {};
+            CountsTxt.forEach(line => {
+                if (!line?.trim()) return;
+                let [value, key] = line.split('\t');
+                if (key in KeyConsolidation) {
+                    KeyConsolidation[key].push(value);
+                } else {
+                    KeyConsolidation[key] = [value];
+                }
+                });
+            var theheaders = ['sampleA', 'sampleB', 'logFC', 'logCPM', 'PValue', 'FDR']
+                    unSearchableKeysTwo.slice(0, theheaders.length).reduce((indexes, line) => {
+                if (!line?.trim()) return indexes;
+                let key = line.split(newLineCarriageReturnTwo)[0];
+                indexes.push(key);
+                return indexes;
+            }, []);
+                let rows = SetToUpload.split(",");
+                let headers = rows[0].split("\t");
+                let dictionary = {};
+
+                headers.forEach(header => {
+                    dictionary[header] = [];
+                });
+
+                for (let i = 1; i < rows.length; i++) {
+                    let values = rows[i].split("\t");
+                    for (let j = 0; j < headers.length; j++) {
+                        dictionary[headers[j]].push(values[j]);
+                    }
+                }
+
+            let FinalItemsTwo = {};
+            var j = 0;
+
+
+
+
+        let ensembleIdsTwo = SearchableKeysTwo.map(key => key.split('_')[0]);
+        let geneNamesTwo = SearchableKeysTwo.map(key => key.split('_')[2]);
+        FinalItemsTwo["EnsembleId"] = ensembleIdsTwo;
+        FinalItemsTwo["Gene"] = geneNamesTwo;
+
+        KeyConsolidation["ExperimentName"] = $('#SelectExperiment').val();;
+
+        let consolidatedKeys = JSON.stringify({KeyConsolidation});
+
+        var filename = document.getElementById('file3').value.split("\\").pop()
+       
+        var matrixId = 50;
+            //send both files to the database
+            /*
+            $.ajax({  
+                url: '/Home/UploadMatrixInitial',  
+                type: "POST",  
+                contentType:"application/x-www-form-urlencoded",
+                data: {MultiMap:abc, Keys:abc2, MatrixId: matrixId},
+                async:true,
+                success: function (data) {  
+                     $('#LoadingImage').hide();
+                },  
+                error: function (err) {  
+                     $('#LoadingImage').hide();
+                }  
+            });  
+             */
+
+            $.ajax({  
+                url: '/Home/UploadMatrixResult',  
+                type: "POST",  
+                contentType:"application/x-www-form-urlencoded",
+                        data: { MultiMap2: JSON.stringify(dictionary), Keys: consolidatedKeys, MatrixId: matrixId, FileName: filename },
+                async:false,
+                beforeSend: function(){
+                     $('#LoadingImage').show();
+                },
+                success: function (data) {  
+                   $('#LoadingImage').hide();
+                   alert("success")
+                },  
+
+                error: function (err) {  
+                    alert(err.statusText);  
+                }  
+            });  
+        } else {  
+            alert("FormData is not supported.");  
+        }
+
+    });  
+});
+
+
+</script>
+
+</body>
+</html>
